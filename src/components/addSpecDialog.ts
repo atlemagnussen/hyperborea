@@ -64,7 +64,7 @@ export class AddSpecDialog extends LitElement {
       if (!this.known.includes(url)) {
         const spec = await loadSpec(url, true)
         if (!spec.operations.length)
-          throw new Error("The document has no operations. Is it an OpenAPI 3 spec?")
+          throw new Error("The spec has no operations.")
         await addSpec(url)
       }
       this.dispatchEvent(new CustomEvent("spec-added", { detail: url }))
@@ -94,7 +94,7 @@ export class AddSpecDialog extends LitElement {
             required
             autocomplete="url"
             placeholder="https://petstore3.swagger.io/api/v3/openapi.json"
-            hint="OpenAPI 3 in JSON. Remembered in this browser only."
+            hint="OpenAPI 3.x, in JSON or YAML. Remembered in this browser only."
             .value=${this.url}
             @input=${(e: Event) => (this.url = (e.target as HTMLInputElement).value ?? "")}
             autofocus

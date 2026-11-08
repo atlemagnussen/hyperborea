@@ -2,7 +2,7 @@
 
 **A query workbench for any API described by an [OpenAPI](https://www.openapis.org/) spec.**
 
-Point it at a spec URL and you get a browsable endpoint tree, login from the spec's security
+Point it at an OpenAPI 3.x spec (JSON or YAML) and you get a browsable endpoint tree, login from the spec's security
 schemes, schema-aware editors for parameters and request bodies, and a response view you can
 filter, sort and chart. It reads the spec at runtime, so there is no code to generate:
 pointing it at another API only takes another URL.
@@ -86,6 +86,8 @@ npm run dev   # http://localhost:8000
 
 ## Limitations
 
+- **OpenAPI 3.x only.** Swagger 2.0 specs are recognised and rejected with a message; convert them
+  first, e.g. with [swagger2openapi](https://github.com/Mermade/oas-kit).
 - Saved queries and published charts live in the browser (IndexedDB). A chart link only works in
   the browser that published it.
 - Only local `$ref`s (`#/components/...`) are resolved.

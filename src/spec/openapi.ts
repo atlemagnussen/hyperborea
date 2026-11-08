@@ -65,10 +65,12 @@ export async function loadSpec(specUrl: string, refresh = false) {
   if (cached && !refresh)
     return cached
 
-  const response = await fetch(specUrl, { headers: { Accept: "application/json" } })
+  const response = await fetch(specUrl, {
+    headers: { Accept: "application/json, application/yaml;q=0.9, */*;q=0.8" },
+  })
   if (!response.ok)
     throw new Error(`Failed to load spec: ${response.status} ${response.statusText}`)
-  const document = (await response.json()) as Document
+  const document = await parseSpec(await response.text())
 
   const spec: LoadedSpec = {
     url: specUrl,
@@ -80,6 +82,31 @@ export async function loadSpec(specUrl: string, refresh = false) {
   }
   cache.set(specUrl, spec)
   return spec
+}
+
+/** Parses a spec in JSON or YAML (the YAML parser is loaded only when needed) and checks it is OpenAPI 3 */
+async function parseSpec(text: string): Promise<Document> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    try {
+      // core schema: no `<<` merge keys, which are not part of OpenAPI anyway
+      const { load } = await import("js-yaml")
+      parsed = load(text)
+    } catch (err) {
+      const reason = err instanceof Error ? err.message.split("\n")[0] : String(err)
+      throw new Error(`The spec is neither valid JSON nor YAML: ${reason}`)
+    }
+  }
+  if (!parsed || typeof parsed !== "object")
+    throw new Error("The spec is not an OpenAPI document.")
+  const { openapi, swagger } = parsed as { openapi?: unknown; swagger?: unknown }
+  if (swagger !== undefined)
+    throw new Error(`This is a Swagger ${String(swagger)} spec. Hyperborea supports OpenAPI 3.x only.`)
+  if (typeof openapi !== "string" || !openapi.startsWith("3."))
+    throw new Error(`Hyperborea supports OpenAPI 3.x only; this spec has no "openapi: 3.x" version.`)
+  return parsed as Document
 }
 
 function getBaseUrl(document: Document, specUrl: string) {
