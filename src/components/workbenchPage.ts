@@ -11,6 +11,8 @@ import {
 } from "../spec/security.js"
 import { getTheme, setTheme } from "../theme.js"
 import type { SavedQuery } from "../storage/savedQueries.js"
+import { listAddedSpecs, removeSpec } from "../storage/specs.js"
+import "./addSpecDialog.js"
 import "./loginDialog.js"
 import "./operationBrowser.js"
 import "./savedQueryList.js"
@@ -115,19 +117,53 @@ export class WorkbenchPage extends LitElement {
     .center {
       padding: var(--wa-space-l);
     }
+    .start-actions {
+      margin-top: var(--wa-space-m);
+    }
   `
 
   @state()
   private environment = environment
 
-  /** The spec in use: one of HYPERBOREA_SPEC_URL's urls, chosen in the header */
+  /** Spec urls added in this browser (IndexedDB), after the configured ones in the selector */
   @state()
-  private specUrl = getSelectedSpecUrl()
+  private addedSpecUrls: string[] = []
 
-  private async switchSpec(url: string) {
-    if (!url || url === this.specUrl)
+  /** The spec in use, chosen in the header; none until loaded, or when there are no specs at all */
+  @state()
+  private specUrl?: string
+
+  /** Set once the added specs are read and a spec is chosen */
+  @state()
+  private ready = false
+
+  @state()
+  private addSpecOpen = false
+
+  /** Configured urls (HYPERBOREA_SPEC_URL) first, then the added ones */
+  private get specUrls() {
+    const configured = this.environment.specUrls
+    return [...configured, ...this.addedSpecUrls.filter((url) => !configured.includes(url))]
+  }
+
+  private isAddedSpec(url?: string) {
+    return !!url && !this.environment.specUrls.includes(url) && this.addedSpecUrls.includes(url)
+  }
+
+  private async readAddedSpecs() {
+    try {
+      this.addedSpecUrls = (await listAddedSpecs()).map((spec) => spec.url)
+    } catch (err) {
+      // IndexedDB unavailable (e.g. some private windows): only the configured specs
+      console.warn("Could not read added specs", err)
+    }
+  }
+
+  private async switchSpec(url: string | undefined) {
+    if (url === this.specUrl)
       return
-    setSelectedSpecUrl(url)
+    if (url)
+      setSelectedSpecUrl(url)
     this.specUrl = url
     // endpoints and saved query belong to the previous spec
     this.selectedKey = ""
@@ -135,6 +171,20 @@ export class WorkbenchPage extends LitElement {
     this.spec = undefined
     await this.loadSpec()
     await this.setupAuth()
+  }
+
+  private async specAdded(url: string) {
+    await this.readAddedSpecs()
+    await this.switchSpec(url)
+  }
+
+  private async removeCurrentSpec() {
+    const url = this.specUrl
+    if (!url || !this.isAddedSpec(url))
+      return
+    await removeSpec(url)
+    await this.readAddedSpecs()
+    await this.switchSpec(this.specUrls[0])
   }
 
   @state()
@@ -203,7 +253,13 @@ export class WorkbenchPage extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     onIdentityChanged((identity) => (this.identity = identity))
-    this.loadSpec().then(() => this.setupAuth())
+    this.readAddedSpecs()
+      .then(() => {
+        this.specUrl = getSelectedSpecUrl(this.specUrls)
+        this.ready = true
+        return this.loadSpec()
+      })
+      .then(() => this.setupAuth())
   }
 
   /** Login options from the spec's securitySchemes, then restore an Authorization Code login */
@@ -219,6 +275,8 @@ export class WorkbenchPage extends LitElement {
     this.specError = ""
     if (refresh)
       this.spec = undefined
+    if (!this.specUrl)
+      return
     try {
       this.spec = await loadSpec(this.specUrl, refresh)
     } catch (err) {
@@ -231,6 +289,22 @@ export class WorkbenchPage extends LitElement {
   }
 
   private renderMain() {
+    if (this.ready && !this.specUrl) {
+      return html`
+        <div class="center">
+          <wa-callout variant="brand">
+            <wa-icon slot="icon" name="map"></wa-icon>
+            Add the url of an OpenAPI spec to explore its API. It is remembered in this browser.
+            <div class="start-actions">
+              <wa-button variant="brand" @click=${() => (this.addSpecOpen = true)}>
+                <wa-icon slot="start" name="plus"></wa-icon>
+                Add OpenAPI spec
+              </wa-button>
+            </div>
+          </wa-callout>
+        </div>
+      `
+    }
     if (this.specError) {
       return html`
         <div class="center">
@@ -278,8 +352,16 @@ export class WorkbenchPage extends LitElement {
     `
   }
 
-  /** Spec selector, when HYPERBOREA_SPEC_URL lists more than one url */
+  /** Spec selector: the configured and added spec urls, with add and remove */
   private renderSpecSelect() {
+    const addButton = html`
+      <wa-button id="add-spec" size="s" appearance="plain" @click=${() => (this.addSpecOpen = true)}>
+        <wa-icon name="plus" label="Add OpenAPI spec"></wa-icon>
+      </wa-button>
+      <wa-tooltip for="add-spec">Add OpenAPI spec</wa-tooltip>
+    `
+    if (!this.specUrls.length)
+      return addButton
     return html`
       <span class="spec-select">
         <wa-select
@@ -288,7 +370,7 @@ export class WorkbenchPage extends LitElement {
           .value=${this.specUrl}
           @change=${(e: Event) => this.switchSpec((e.target as HTMLSelectElement).value)}
         >
-          ${this.environment.specUrls.map(
+          ${this.specUrls.map(
             (url) => html`<wa-option value=${url}>${url.replace(/^https?:\/\//, "")}</wa-option>`,
           )}
         </wa-select>
@@ -301,6 +383,15 @@ export class WorkbenchPage extends LitElement {
         >
           <wa-icon name="arrow-up-right-from-square" label="Open the spec"></wa-icon>
         </wa-button>
+        ${addButton}
+        ${this.isAddedSpec(this.specUrl)
+        ? html`
+              <wa-button id="remove-spec" size="s" appearance="plain" @click=${this.removeCurrentSpec}>
+                <wa-icon name="trash" label="Remove this spec"></wa-icon>
+              </wa-button>
+              <wa-tooltip for="remove-spec">Remove this spec from the list</wa-tooltip>
+            `
+        : null}
       </span>
     `
   }
@@ -374,13 +465,10 @@ export class WorkbenchPage extends LitElement {
         ? html`
               <span class="spec">
                 ${this.spec.title} ${this.spec.version} · ${this.spec.apiBaseUrl}
-                ${this.environment.specUrls.length > 1
-                  ? null
-                  : html`· <a href=${this.spec.url} target="_blank" rel="noopener noreferrer">${this.spec.url}</a>`}
               </span>
             `
         : null}
-        ${this.environment.specUrls.length > 1 ? this.renderSpecSelect() : null}
+        ${this.ready ? this.renderSpecSelect() : null}
         <div class="end">
           <wa-button size="s" appearance="plain" @click=${this.toggleTheme}>
             <wa-icon
@@ -388,13 +476,19 @@ export class WorkbenchPage extends LitElement {
               label=${this.theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
             ></wa-icon>
           </wa-button>
-          <wa-button size="s" appearance="plain" @click=${() => this.loadSpec(true)}>
+          <wa-button size="s" appearance="plain" ?disabled=${!this.specUrl} @click=${() => this.loadSpec(true)}>
             <wa-icon name="rotate" label="Reload spec"></wa-icon>
           </wa-button>
           ${this.renderLogin()}
         </div>
       </header>
       ${this.renderMain()}
+      <add-spec-dialog
+        ?open=${this.addSpecOpen}
+        .known=${this.specUrls}
+        @spec-added=${(e: CustomEvent<string>) => this.specAdded(e.detail)}
+        @close=${() => (this.addSpecOpen = false)}
+      ></add-spec-dialog>
     `
   }
 }

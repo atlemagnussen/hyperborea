@@ -2,6 +2,7 @@ import type { AuthorizationCodeConfig } from "../auth/settings.js"
 import type { ChartConfig } from "../chart/rows.js"
 import type { ParameterValues } from "../request/request.js"
 import { operationKey } from "../spec/openapi.js"
+import { afterOpen, openNamed, requestDone, run as runIn, storeNames } from "./db.js"
 
 /** A query the user saved: endpoint plus all parameter values (and the body of a write) */
 export interface SavedQuery {
@@ -30,39 +31,17 @@ export interface PublishedChart {
   publishedAt: string
 }
 
-// POC storage: IndexedDB in this browser only, per origin (so per deployment)
-const dbName = "hyperborea"
+// POC storage: IndexedDB in this browser only, see db.ts
 // the client's former name; its queries are moved over once, see moveLegacyQueries
 const legacyDbName = "genericClient"
-const storeName = "savedQueries"
-
-let dbPromise: Promise<IDBDatabase> | undefined
-
-function openNamed(name: string) {
-  return new Promise<IDBDatabase>((resolve, reject) => {
-    const request = indexedDB.open(name, 1)
-    request.onupgradeneeded = () => request.result.createObjectStore(storeName, { keyPath: "id" })
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error("Could not open IndexedDB"))
-  })
-}
-
-function requestDone(request: IDBRequest | IDBTransaction) {
-  return new Promise<void>((resolve, reject) => {
-    if (request instanceof IDBTransaction)
-      request.oncomplete = () => resolve()
-    else
-      request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"))
-  })
-}
+const storeName = storeNames.savedQueries
 
 /** Copies the queries from the database under the former name, then deletes it */
 async function moveLegacyQueries(db: IDBDatabase) {
   const databases = await indexedDB.databases?.().catch(() => [])
   if (!databases?.some((d) => d.name === legacyDbName))
     return
-  const legacy = await openNamed(legacyDbName)
+  const legacy = await openNamed(legacyDbName, 1, [storeName])
   const read = legacy.transaction(storeName, "readonly").objectStore(storeName).getAll()
   await requestDone(read)
   legacy.close()
@@ -73,27 +52,10 @@ async function moveLegacyQueries(db: IDBDatabase) {
   indexedDB.deleteDatabase(legacyDbName)
 }
 
-function openDb() {
-  dbPromise ??= openNamed(dbName)
-    .then(async (db) => {
-      await moveLegacyQueries(db).catch((err) => console.warn("Moving saved queries failed", err))
-      return db
-    })
-    .catch((err) => {
-      dbPromise = undefined
-      throw err
-    })
-  return dbPromise
-}
+afterOpen(moveLegacyQueries)
 
-async function run<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>) {
-  const db = await openDb()
-  return new Promise<T>((resolve, reject) => {
-    const request = action(db.transaction(storeName, mode).objectStore(storeName))
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"))
-  })
-}
+const run = <T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>) =>
+  runIn<T>(storeName, mode, action)
 
 /** Fires "change" after a query was saved or deleted */
 export const savedQueriesEvents = new EventTarget()

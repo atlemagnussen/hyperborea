@@ -42,7 +42,7 @@ One environment per deployment, configured by environment variables (see `src/en
 | Variable                              |                                                                                                         |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `HYPERBOREA_ENV_NAME`                 | Optional, currently not shown (badge removed, kept for later use)                                       |
-| `HYPERBOREA_SPEC_URL`                 | URL to the OpenAPI spec; several comma separated show a selector                                        |
+| `HYPERBOREA_SPEC_URL`                 | Optional: predefined OpenAPI spec urls, comma separated; users can add more in the app                 |
 | `HYPERBOREA_DEFAULT_AUTH_CODE_CLIENT` | Optional: client id prefilled in the Authorization Code login dialog, e.g. `webclient` (not in OpenAPI) |
 
 Strictly generic: the auth server and API base url come from the spec only (security schemes;
@@ -54,9 +54,15 @@ Strictly generic: the auth server and API base url come from the spec only (secu
 - **Container**: the same variables are read at container start and written to `/config.js`
   (`window.__HYPERBOREA_ENV__`), which wins over build time values. Nothing from the `.env`
   files is baked into the production build.
-- Missing required settings are shown as an error instead of the app.
+- Missing required settings are shown as an error instead of the app (none are required now).
+- **Added specs**: the header selector always shows (configured urls first, then added ones) with
+  a + button: `addSpecDialog.ts` loads the spec before saving it, so a bad url or missing CORS is
+  reported in the dialog. Added urls live in IndexedDB (`specs` store, `src/storage/specs.ts`),
+  per browser; a trash button removes the selected one (configured ones cannot be removed). With
+  no specs at all the main area asks for one, so a public demo can run without any configured.
+- IndexedDB setup is shared in `src/storage/db.ts` (version 2 added the `specs` store).
 - **Several specs**: `HYPERBOREA_SPEC_URL` may hold a comma separated list (an env value is
-  always a string; commas do not occur in spec urls). With more than one, the header shows a
+  always a string; commas do not occur in spec urls). The header shows a
   selector (urls as labels, they are self explanatory); the choice is remembered per browser
   (localStorage), loaded specs are cached. Switching resets the selected endpoint/saved query and
   sets up login from the new spec. Saved queries of another spec show as disabled.

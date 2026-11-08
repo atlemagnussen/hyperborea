@@ -1,6 +1,6 @@
 export interface Environment {
   name: string
-  /** OpenAPI spec urls (HYPERBOREA_SPEC_URL, comma separated); more than one shows a selector */
+  /** Predefined OpenAPI spec urls (HYPERBOREA_SPEC_URL, comma separated); users can add their own */
   specUrls: string[]
   /** Prefilled client id for Authorization Code login (OpenAPI has no field for it); can be changed */
   defaultAuthCodeClient: string
@@ -28,7 +28,7 @@ export const appVersion = __APP_VERSION__
 
 export const environment: Environment = {
   name: read("HYPERBOREA_ENV_NAME", false),
-  specUrls: read("HYPERBOREA_SPEC_URL")
+  specUrls: read("HYPERBOREA_SPEC_URL", false)
     .split(",")
     .map((url) => url.trim())
     .filter(Boolean),
@@ -41,15 +41,15 @@ export const missingSettings: readonly string[] = missing
 // the spec chosen in the selector, remembered per browser
 const specUrlKey = "hyperborea.specUrl"
 
-/** The selected spec url: the remembered one when it is still configured, else the first */
-export function getSelectedSpecUrl() {
+/** The selected spec url: the remembered one when it is still available, else the first (if any) */
+export function getSelectedSpecUrl(available: readonly string[]): string | undefined {
   let stored: string | null = null
   try {
     stored = localStorage.getItem(specUrlKey)
   } catch {
     // storage unavailable
   }
-  return stored && environment.specUrls.includes(stored) ? stored : environment.specUrls[0]
+  return stored && available.includes(stored) ? stored : available[0]
 }
 
 export function setSelectedSpecUrl(url: string) {
