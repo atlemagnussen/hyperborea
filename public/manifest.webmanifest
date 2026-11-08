@@ -1,0 +1,15 @@
+{
+  "name": "Hyperborea",
+  "short_name": "Hyperborea",
+  "description": "Read data from APIs described by an OpenAPI spec",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#2c3a46",
+  "theme_color": "#2c3a46",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

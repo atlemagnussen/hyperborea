@@ -1,0 +1,8 @@
+# installed fresh by npm ci in the build stage
+node_modules
+dist
+.git
+# local env overrides stay local; the committed .env is kept as reference defaults
+.env.development
+.env.*.local
+.env.local

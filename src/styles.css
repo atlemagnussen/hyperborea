@@ -1,0 +1,20 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+:root {
+  /* layer over the start screen background image (requestEditor .welcome), keeps text readable */
+  --welcome-background-dim: rgb(255 255 255 / 0.6);
+}
+
+.wa-dark {
+  --welcome-background-dim: rgb(10 12 18 / 0.55);
+}
+
+body {
+  background-color: var(--wa-color-surface-default);
+  color: var(--wa-color-text-normal);
+  font-family: var(--wa-font-family-body);
+}
